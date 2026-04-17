@@ -1,0 +1,26 @@
+{
+  "name": "repo-intelligence-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted repository intelligence app",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace shared && concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "db:up": "docker compose up -d postgres",
+    "db:init": "docker exec repo-intel-postgres psql -U postgres -d repo_intel -c \"CREATE EXTENSION IF NOT EXISTS vector;\" && npm run prisma:generate --workspace backend && npm run prisma:push --workspace backend",
+    "setup:dev": "npm run db:up && npm run db:init && npm run build --workspace shared",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "build": "npm run build --workspace shared && npm run build --workspace backend && npm run build --workspace frontend",
+    "lint": "npm run lint --workspace backend && npm run lint --workspace frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

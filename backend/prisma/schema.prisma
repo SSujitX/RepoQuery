@@ -1,0 +1,216 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id               String   @id @default(cuid())
+  providerType     String   @map("provider_type")
+  apiKeyEncrypted  String?  @map("api_key_encrypted")
+  baseUrl          String?  @map("base_url")
+  modelName        String   @map("model_name")
+  embeddingModel   String   @map("embedding_model")
+  githubTokenEncrypted String? @map("github_token_encrypted")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model ProviderProfile {
+  id               String   @id @default(cuid())
+  providerType     String   @unique @map("provider_type")
+  apiKeyEncrypted  String?  @map("api_key_encrypted")
+  baseUrl          String?  @map("base_url")
+  modelName        String   @map("model_name")
+  embeddingModel   String   @map("embedding_model")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("provider_profiles")
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  repoUrl       String   @map("repo_url")
+  repoOwner     String   @map("repo_owner")
+  repoName      String   @map("repo_name")
+  defaultBranch String   @map("default_branch")
+  status        String
+  lastSyncedAt  DateTime? @map("last_synced_at")
+  lastCheckedAt DateTime? @map("last_checked_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  syncRuns      ProjectSyncRun[]
+  files         RepositoryFile[]
+  symbols       RepositorySymbol[]
+  chunks        RepositoryChunk[]
+  issues        RepositoryIssue[]
+  pullRequests  RepositoryPullRequest[]
+  discussions   RepositoryDiscussion[]
+  commits       RepositoryCommit[]
+  chats         Chat[]
+
+  @@map("projects")
+}
+
+model ProjectSyncRun {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  status     String
+  startedAt  DateTime @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  summaryJson Json?   @map("summary_json")
+  errorText  String?  @map("error_text")
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_sync_runs")
+}
+
+model RepositoryFile {
+  id                  String   @id @default(cuid())
+  projectId           String   @map("project_id")
+  path                String
+  sha                 String
+  language            String?
+  sizeBytes           Int      @map("size_bytes")
+  contentText         String   @map("content_text")
+  lastSeenCommitSha   String?  @map("last_seen_commit_sha")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  symbols             RepositorySymbol[]
+  chunks              RepositoryChunk[]
+
+  @@unique([projectId, path])
+  @@map("repository_files")
+}
+
+model RepositorySymbol {
+  id         String  @id @default(cuid())
+  projectId  String  @map("project_id")
+  fileId     String  @map("file_id")
+  symbolName String  @map("symbol_name")
+  symbolType String  @map("symbol_type")
+  startLine  Int     @map("start_line")
+  endLine    Int     @map("end_line")
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file       RepositoryFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@map("repository_symbols")
+}
+
+model RepositoryChunk {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  fileId     String?  @map("file_id")
+  sourceType String   @map("source_type")
+  path       String?
+  symbolName String?  @map("symbol_name")
+  startLine  Int?     @map("start_line")
+  endLine    Int?     @map("end_line")
+  chunkText  String   @map("chunk_text")
+  embedding  Unsupported("vector")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file       RepositoryFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@map("repository_chunks")
+}
+
+model RepositoryIssue {
+  id                String   @id @default(cuid())
+  projectId         String   @map("project_id")
+  githubIssueNumber Int      @map("github_issue_number")
+  title             String
+  body              String?
+  state             String
+  author            String?
+  labelsJson        Json?    @map("labels_json")
+  updatedAt         DateTime @map("updated_at")
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, githubIssueNumber])
+  @@map("repository_issues")
+}
+
+model RepositoryPullRequest {
+  id             String   @id @default(cuid())
+  projectId      String   @map("project_id")
+  githubPrNumber Int      @map("github_pr_number")
+  title          String
+  body           String?
+  state          String
+  author         String?
+  updatedAt      DateTime @map("updated_at")
+
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, githubPrNumber])
+  @@map("repository_pull_requests")
+}
+
+model RepositoryDiscussion {
+  id                     String   @id @default(cuid())
+  projectId              String   @map("project_id")
+  githubDiscussionNumber Int      @map("github_discussion_number")
+  title                  String
+  body                   String?
+  category               String?
+  updatedAt              DateTime @map("updated_at")
+
+  project                Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, githubDiscussionNumber])
+  @@map("repository_discussions")
+}
+
+model RepositoryCommit {
+  id          String   @id @default(cuid())
+  projectId   String   @map("project_id")
+  commitSha   String   @map("commit_sha")
+  message     String
+  author      String?
+  committedAt DateTime @map("committed_at")
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, commitSha])
+  @@map("repository_commits")
+}
+
+model Chat {
+  id         String   @id @default(cuid())
+  projectId  String   @map("project_id")
+  title      String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages   ChatMessage[]
+
+  @@map("chats")
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  chatId        String   @map("chat_id")
+  role          String
+  content       String
+  evidenceJson  Json?    @map("evidence_json")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  chat          Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
