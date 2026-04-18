@@ -8,6 +8,28 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
+function messageFromApiErrorBody(text: string, status: number): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return `Request failed (${status})`;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { message?: unknown };
+    if (typeof parsed.message === "string" && parsed.message.trim()) {
+      return parsed.message.trim();
+    }
+    if (Array.isArray(parsed.message)) {
+      const joined = parsed.message.map((m) => String(m)).join("; ");
+      if (joined.trim()) {
+        return joined.trim();
+      }
+    }
+  } catch {
+    // not JSON — use raw body
+  }
+  return trimmed;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -19,7 +41,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || "Request failed");
+    throw new Error(messageFromApiErrorBody(text, response.status));
   }
 
   return response.json() as Promise<T>;
@@ -80,11 +102,14 @@ export const apiClient = {
     }),
   getChat: (chatId: string) => request<ChatModel>(`/chats/${chatId}`),
   getMessages: (chatId: string) => request<MessageModel[]>(`/chats/${chatId}/messages`),
-  createMessage: (chatId: string, content: string) =>
+  createMessage: (chatId: string, content: string, init?: { signal?: AbortSignal }) =>
     request<MessageModel>(`/chats/${chatId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content }),
+      signal: init?.signal,
     }),
+  stopChatGeneration: (chatId: string) =>
+    request<{ ok: boolean }>(`/chats/${chatId}/stop`, { method: "POST" }),
   getSyncRuns: (projectId: string) => request(`/projects/${projectId}/sync-runs`),
   getSources: (projectId: string) => request(`/projects/${projectId}/sources`),
 };
