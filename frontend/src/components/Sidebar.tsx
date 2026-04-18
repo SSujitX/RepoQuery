@@ -17,6 +17,9 @@ type Props = {
     description?: string;
   }) => Promise<unknown>;
   onDeleteProject: (projectId: string) => Promise<unknown>;
+  /** Narrow screens: sidebar is a slide-over drawer. */
+  isMobileDrawer?: boolean;
+  onCloseDrawer?: () => void;
 };
 
 function filterProjects(projects: ProjectModel[], query: string): ProjectModel[] {
@@ -37,6 +40,8 @@ export function Sidebar({
   projectsLoading = false,
   onCreateProject,
   onDeleteProject,
+  isMobileDrawer = false,
+  onCloseDrawer,
 }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -98,7 +103,25 @@ export function Sidebar({
   );
 
   return (
-    <aside className={`sidebar${collapsed ? " sidebar--collapsed" : ""}`}>
+    <aside className={`sidebar${collapsed ? " sidebar--collapsed" : ""}${isMobileDrawer ? " sidebar--drawer" : ""}`}>
+      {isMobileDrawer ? (
+        <div className="sidebar-drawer-top">
+          <span className="sidebar-drawer-title">Menu</span>
+          <button
+            type="button"
+            className="sidebar-drawer-close"
+            onClick={onCloseDrawer}
+            aria-label="Close menu"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M18.3 5.71 12.66 11.36l5.65 5.65-1.41 1.41L11.24 12.77 5.6 18.41 4.18 17l5.65-5.65L4.18 5.71 5.6 4.29l5.64 5.64 5.64-5.64 1.42 1.42Z"
+              />
+            </svg>
+          </button>
+        </div>
+      ) : null}
       <div className={`sidebar-brand-row${collapsed ? " sidebar-brand-row--collapsed" : ""}`}>
         {collapsed ? (
           <>
