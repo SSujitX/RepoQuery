@@ -241,12 +241,7 @@ export class IngestionService {
 
     await forEachWithConcurrency(candidates, 8, async (node) => {
       const path = node.path!;
-      const text = await this.githubService.fetchFileContent(
-        owner,
-        repo,
-        path,
-        branch,
-      );
+      const text = await this.githubService.fetchBlobContent(owner, repo, node.sha!);
       if (!text) {
         completed += 1;
         if (syncRunId && (completed % 12 === 0 || completed === total)) {

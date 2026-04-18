@@ -66,12 +66,7 @@ export class GithubService {
     return data.tree;
   }
 
-  async fetchFileContent(
-    owner: string,
-    repo: string,
-    path: string,
-    ref: string,
-  ) {
+  async fetchFileContent(owner: string, repo: string, path: string, ref: string) {
     const client = await this.getOctokit();
     try {
       const { data } = await client.rest.repos.getContent({
@@ -89,6 +84,34 @@ export class GithubService {
       }
     } catch (error) {
       this.logger.warn(`Unable to fetch content for ${path}: ${String(error)}`);
+    }
+    return null;
+  }
+
+  /**
+   * Preferred file download method.
+   * Uses the Git Data API (blob SHA from the repo tree) to avoid deprecated contents calls.
+   */
+  async fetchBlobContent(owner: string, repo: string, sha: string) {
+    const client = await this.getOctokit();
+    try {
+      const { data } = await client.rest.git.getBlob({
+        owner,
+        repo,
+        file_sha: sha,
+        request: {
+          signal: AbortSignal.timeout(8000),
+        },
+      });
+      if (typeof data?.content === 'string' && typeof data?.encoding === 'string') {
+        if (data.encoding === 'base64') {
+          return Buffer.from(data.content, 'base64').toString('utf8');
+        }
+        // Fall back: best-effort decode if GitHub ever changes encoding.
+        return data.content;
+      }
+    } catch (error) {
+      this.logger.warn(`Unable to fetch blob ${sha}: ${String(error)}`);
     }
     return null;
   }
