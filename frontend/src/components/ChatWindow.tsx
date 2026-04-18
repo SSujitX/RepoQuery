@@ -6,6 +6,10 @@ import { ThinkingCollapsible } from "./ThinkingCollapsible";
 type Props = {
   messages: MessageModel[];
   onSend: (content: string) => Promise<void>;
+  /** Abort the in-flight assistant request (ChatGPT-style stop). */
+  onStopGeneration?: () => void;
+  /** When true and `onStopGeneration` is set, show Stop instead of Send. */
+  stopWhileSending?: boolean;
   errorText?: string | null;
   pendingUserContent?: string | null;
   /** Thinking / retrieval strip under the thread. */
@@ -24,6 +28,8 @@ type Props = {
 export function ChatWindow({
   messages,
   onSend,
+  onStopGeneration,
+  stopWhileSending = false,
   errorText,
   pendingUserContent,
   awaitingAssistant = false,
@@ -35,7 +41,9 @@ export function ChatWindow({
 }: Props) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [forceHideStop, setForceHideStop] = useState(false);
   const composerBlocked = sendBlocked ?? awaitingAssistant;
+  const showStopInsteadOfSend = Boolean(onStopGeneration) && stopWhileSending && !forceHideStop;
   const shellRef = useRef<HTMLDivElement | null>(null);
   const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -62,11 +70,14 @@ export function ChatWindow({
       return;
     }
     setSending(true);
+    setForceHideStop(false);
     setText("");
     try {
       await onSend(trimmed);
-    } catch {
-      setText(trimmed);
+    } catch (err) {
+      if ((err as Error)?.name !== "AbortError") {
+        setText(trimmed);
+      }
     } finally {
       setSending(false);
     }
@@ -179,6 +190,17 @@ export function ChatWindow({
             </div>
           ) : null}
           <ThinkingCollapsible active={awaitingAssistant} />
+          {errorText && !awaitingAssistant ? (
+            <div className="cgpt-thread-request-error" role="alert">
+              <div className="cgpt-thread-request-error-head">
+                <span className="cgpt-thread-request-error-icon" aria-hidden>
+                  !
+                </span>
+                <span>Could not get a reply</span>
+              </div>
+              <p className="cgpt-thread-request-error-body">{errorText}</p>
+            </div>
+          ) : null}
           <div ref={bottomAnchorRef} className="cgpt-thread-bottom-anchor" aria-hidden />
         </div>
       </div>
@@ -205,20 +227,37 @@ export function ChatWindow({
               }
             }}
           />
-          <button
-            type="submit"
-            className="cgpt-composer-send icon-btn primary-btn"
-            disabled={!text.trim() || sending || composerBlocked}
-            aria-label="Send message"
-            title="Send"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M5 12a1 1 0 0 1 1-1h8.59l-2.3-2.29a1 1 0 1 1 1.42-1.42l4 4a1 1 0 0 1 0 1.42l-4 4a1 1 0 0 1-1.42-1.42L14.59 13H6a1 1 0 0 1-1-1Z"
-              />
-            </svg>
-          </button>
+          {showStopInsteadOfSend ? (
+            <button
+              type="button"
+              className="cgpt-composer-stop icon-btn"
+              onClick={() => {
+                setForceHideStop(true);
+                onStopGeneration?.();
+              }}
+              aria-label="Stop generating"
+              title="Stop"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="cgpt-composer-send icon-btn primary-btn"
+              disabled={!text.trim() || sending || composerBlocked}
+              aria-label="Send message"
+              title="Send"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M5 12a1 1 0 0 1 1-1h8.59l-2.3-2.29a1 1 0 1 1 1.42-1.42l4 4a1 1 0 0 1 0 1.42l-4 4a1 1 0 0 1-1.42-1.42L14.59 13H6a1 1 0 0 1-1-1Z"
+                />
+              </svg>
+            </button>
+          )}
         </form>
         <p className="cgpt-composer-disclaimer">RepoQuery can make mistakes. Verify important changes against the real repository.</p>
         {errorText ? <p className="error-text cgpt-composer-error">{errorText}</p> : null}
