@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
+import { ASSISTANT_STOPPED_MESSAGE } from "../lib/chat-constants";
 import { AiConnectModal } from "../components/AiConnectModal";
 import { ChatWindow } from "../components/ChatWindow";
 import { ProjectHeader } from "../components/ProjectHeader";
@@ -25,6 +26,7 @@ export function ChatPage() {
   const [showAiConnectModal, setShowAiConnectModal] = useState(false);
   /** Assistant count when a send starts; kept across settles so overlapping sends do not clear it. */
   const sendBaselineAssistantCountRef = useRef<number | null>(null);
+  const sendAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (routeProjectId && routeProjectId !== currentProjectId) {
@@ -96,8 +98,13 @@ export function ChatPage() {
   }, [syncMutation.isPending, projectId, queryClient]);
 
   const messageMutation = useMutation({
-    mutationFn: (content: string) => apiClient.createMessage(chatId, content),
+    mutationFn: (content: string) => {
+      const ac = new AbortController();
+      sendAbortRef.current = ac;
+      return apiClient.createMessage(chatId, content, { signal: ac.signal });
+    },
     onMutate: () => {
+      setSendError(null);
       const data = queryClient.getQueryData<MessageModel[]>(["messages", chatId]) ?? [];
       sendBaselineAssistantCountRef.current = data.filter((m) => m.role === "assistant").length;
     },
@@ -106,6 +113,39 @@ export function ChatPage() {
       void queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
     },
     onError: (error: Error) => {
+      const isAbortLike =
+        error.name === "AbortError" ||
+        (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
+      if (isAbortLike) {
+        setSendError(null);
+        queryClient.setQueryData<MessageModel[]>(["messages", chatId], (old) => {
+          if (!old?.length) {
+            return old;
+          }
+          if (old.some((m) => m.role === "assistant" && m.content === ASSISTANT_STOPPED_MESSAGE)) {
+            return old;
+          }
+          const last = old[old.length - 1];
+          if (last?.role !== "user") {
+            return old;
+          }
+          return [
+            ...old,
+            {
+              id: `client-stopped-${Date.now()}`,
+              chatId,
+              role: "assistant",
+              content: ASSISTANT_STOPPED_MESSAGE,
+              evidenceJson: {},
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        });
+        window.setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
+        }, 450);
+        return;
+      }
       const lowered = error.message.toLowerCase();
       if (lowered.includes("ai provider is not configured") || lowered.includes("ai api key is missing")) {
         setSendError("Connect AI in Settings before chatting.");
@@ -114,7 +154,18 @@ export function ChatPage() {
       }
       setSendError(error.message || "Message failed to send.");
     },
+    onSettled: () => {
+      sendAbortRef.current = null;
+    },
   });
+
+  const stopGeneration = useCallback(() => {
+    sendAbortRef.current?.abort();
+    void apiClient.stopChatGeneration(chatId).finally(() => {
+      void queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
+    });
+    messageMutation.reset();
+  }, [chatId, messageMutation, queryClient]);
 
   const sendMessage = useCallback(
     (content: string) => messageMutation.mutateAsync(content).then(() => undefined),
@@ -252,6 +303,8 @@ export function ChatPage() {
         messages={messages}
         errorText={sendError}
         onSend={sendMessage}
+        onStopGeneration={stopGeneration}
+        stopWhileSending={messageMutation.isPending}
         pendingUserContent={pendingUserContent}
         awaitingAssistant={awaitingAssistant}
         sendBlocked={messageMutation.isPending}
