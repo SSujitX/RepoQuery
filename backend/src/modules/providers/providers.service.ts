@@ -38,6 +38,7 @@ export class ProvidersService {
       model,
       messages,
       temperature: 0,
+      max_tokens: 3000,
     });
 
     return response.choices[0]?.message?.content ?? '';
@@ -62,6 +63,7 @@ export class ProvidersService {
       model,
       messages,
       temperature: 0,
+      max_tokens: 3000,
       tools: tools?.length ? tools : undefined,
       tool_choice: tools?.length ? 'auto' : undefined,
     });
