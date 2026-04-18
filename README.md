@@ -28,12 +28,6 @@ After the UI loads, open **Settings** and add your **AI** provider and optional 
 - **Answers**: The assistant uses **tools** (code search, history, file view) so responses stay tied to **repository evidence** rather than guessing.
 - **Sync**: Manual refresh per project and scheduled checks to keep the index fresh.
 
-### v1 limitations
-
-- **Self-hosted** only (no managed SaaS in this repo).
-- **Public GitHub repositories** only (no private repos or org billing flows).
-- **No end-user authentication** in the UI (suitable for a trusted local or internal network).
-
 ---
 
 ## What uses what (architecture)
@@ -287,4 +281,4 @@ RepoQuery/
 
 ## Contributing
 
-Use the GitHub issue tracker for bug reports and feature discussions; pull requests are welcome when they match project scope (self-hosted, public repos, no auth/billing in v1).
+Use the GitHub issue tracker for bug reports and feature discussions; pull requests are welcome when they match project scope.
