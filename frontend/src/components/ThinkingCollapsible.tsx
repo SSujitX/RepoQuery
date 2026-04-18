@@ -5,6 +5,17 @@ const STEPS = [
   "Searching the repository for relevant context",
   "Analyzing code, issues, and history",
   "Grounding an answer in what we found",
+  "Synthesizing the final execution steps",
+  "Verifying code quality and syntax",
+];
+
+const HINTS = [
+  "Retrieval and models run on the server; this view updates when the reply is ready.",
+  "Agents might take a few moments to accurately crawl deep file structures.",
+  "Cross-referencing function signatures across the entire repository...",
+  "Looking at history and PRs to ensure the best possible answer.",
+  "Comparing multiple files to give you the exact context you need.",
+  "Formulating the most concise and accurate code snippet possible.",
 ];
 
 type Props = {
@@ -61,11 +72,11 @@ export function ThinkingCollapsible({ active }: Props) {
         <span className="cgpt-thinking-chevron" aria-hidden>
           ›
         </span>
-        <span className="cgpt-thinking-title">Thought for {timeLabel}</span>
+        <span className="cgpt-thinking-title">Thinking {timeLabel}</span>
       </summary>
       <div className="cgpt-thinking-body">
         <p className="cgpt-thinking-step">{STEPS[stepIndex]}</p>
-        <p className="cgpt-thinking-hint">Retrieval and models run on the server; this view updates when the reply is ready.</p>
+        <p className="cgpt-thinking-hint">{HINTS[stepIndex]}</p>
       </div>
     </details>
   );
