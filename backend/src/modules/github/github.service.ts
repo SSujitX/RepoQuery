@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Octokit } from 'octokit';
 import { SettingsService } from '../settings/settings.service';
 
@@ -14,12 +13,9 @@ const GITHUB_REST_API_VERSION = '2026-03-10';
 export class GithubService {
   private readonly logger = new Logger(GithubService.name);
 
-  constructor(
-    private readonly config: ConfigService,
-    private readonly settingsService: SettingsService,
-  ) {}
+  constructor(private readonly settingsService: SettingsService) {}
 
-  /** Prefer token saved in Settings (DB); fall back to GITHUB_TOKEN in env. */
+  /** Token from Settings (DB) only; unauthenticated requests if unset. */
   private async getOctokit(): Promise<Octokit> {
     let token: string | undefined;
     try {
@@ -30,9 +26,6 @@ export class GithubService {
       }
     } catch {
       // ignore settings read errors
-    }
-    if (!token) {
-      token = this.config.get<string>('githubToken')?.trim() || undefined;
     }
     const requestDefaults = {
       headers: {
