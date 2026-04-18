@@ -4,6 +4,10 @@
 
 If you are looking for a **self-hosted GitHub Q&A**, **repo search with embeddings**, **pgvector NestJS** example, or **Docker Compose Postgres** setup for a **TypeScript monorepo**, this README walks through **clone → install → `.env` → Docker & database (first time) → `npm run dev` → Settings** in order.
 
+![RepoQuery chat screenshot](./screenshot/chat.png)
+
+![RepoQuery projects screenshot](./screenshot/projects.png)
+
 ---
 
 ## Local development order (read this first)
