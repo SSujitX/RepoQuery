@@ -16,8 +16,7 @@
 
     /* Linting */
     "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noUnusedParameters": true
   },
   "include": ["vite.config.ts"]
 }
