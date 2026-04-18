@@ -139,12 +139,21 @@ export class ChatsService {
       compressedHistory,
       (text: string) => this.emitThought(chatId, text)
     );
+    const evidenceList = Array.isArray((response as { evidenceList?: unknown }).evidenceList)
+      ? ((response as { evidenceList: string[] }).evidenceList ?? []).filter((s) => typeof s === 'string')
+      : [];
+    const evidencePayload = {
+      ...(typeof response.evidence === 'object' && response.evidence !== null && !Array.isArray(response.evidence)
+        ? (response.evidence as Record<string, unknown>)
+        : {}),
+      evidenceList,
+    };
     const assistantMessage = await this.prisma.chatMessage.create({
       data: {
         chatId,
         role: 'assistant',
         content: response.answer,
-        evidenceJson: response.evidence as object,
+        evidenceJson: evidencePayload,
       },
     });
 
