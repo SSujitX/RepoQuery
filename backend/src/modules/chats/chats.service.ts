@@ -1,8 +1,10 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
 import { Subject, Observable } from 'rxjs';
 import { AgentOrchestratorService } from '../agents/agent-orchestrator.service';
@@ -15,6 +17,68 @@ export class ChatsService {
     private readonly orchestrator: AgentOrchestratorService,
     private readonly settingsService: SettingsService,
   ) {}
+
+  /** Shown when the user stops generation; keep in sync with frontend `ASSISTANT_STOPPED_MESSAGE`. */
+  static readonly ASSISTANT_STOPPED_CONTENT = 'You stopped this response.';
+
+  private activeGenerations = new Map<string, AbortController>();
+
+  private static isAbortError(error: unknown, signal?: AbortSignal): boolean {
+    if (signal?.aborted) {
+      return true;
+    }
+    let cur: unknown = error;
+    for (let depth = 0; depth < 6 && cur != null; depth++) {
+      if (cur instanceof Error) {
+        if (cur.name === 'AbortError') {
+          return true;
+        }
+        const code = (cur as NodeJS.ErrnoException).code;
+        if (code === 'ERR_CANCELED' || code === 'ABORT_ERR') {
+          return true;
+        }
+      }
+      if (typeof cur === 'object' && cur !== null && 'name' in cur) {
+        const n = (cur as { name: string }).name;
+        if (n === 'AbortError') {
+          return true;
+        }
+      }
+      if (typeof cur === 'object' && cur !== null && 'code' in cur) {
+        const c = (cur as { code: string }).code;
+        if (c === 'ERR_CANCELED' || c === 'ABORT_ERR') {
+          return true;
+        }
+      }
+      if (typeof cur === 'object' && cur !== null && 'cause' in cur) {
+        cur = (cur as { cause: unknown }).cause;
+        continue;
+      }
+      break;
+    }
+    return false;
+  }
+
+  private static formatProviderFailure(error: unknown): string {
+    if (error && typeof error === 'object') {
+      const e = error as Record<string, unknown>;
+      const nested = e['error'];
+      if (nested && typeof nested === 'object' && nested !== null) {
+        const m = (nested as Record<string, unknown>)['message'];
+        if (typeof m === 'string' && m.trim()) {
+          return m.trim();
+        }
+      }
+      const msg = e['message'];
+      if (typeof msg === 'string' && msg.trim()) {
+        return msg.trim();
+      }
+    }
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+    return 'AI provider request failed.';
+  }
 
   private thoughtStreams = new Map<string, Subject<{ data: string }>>();
 
@@ -98,7 +162,67 @@ export class ChatsService {
     });
   }
 
-  async createMessage(chatId: string, content: string) {
+  async stopGeneration(chatId: string) {
+    const ac = this.activeGenerations.get(chatId);
+    if (ac) {
+      ac.abort();
+    }
+    await this.ensureStoppedAssistantIfPendingUser(chatId);
+    return { ok: true as const };
+  }
+
+  /**
+   * If the latest message is still the user's (assistant reply not persisted yet), append the
+   * stopped assistant row. Idempotent: safe if called from both `catch` and `req.close`.
+   */
+  async ensureStoppedAssistantIfPendingUser(chatId: string) {
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const last = await tx.chatMessage.findFirst({
+            where: { chatId },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (!last) {
+            return null;
+          }
+          if (last.role === 'assistant') {
+            if (last.content === ChatsService.ASSISTANT_STOPPED_CONTENT) {
+              return last;
+            }
+            return null;
+          }
+          const created = await tx.chatMessage.create({
+            data: {
+              chatId,
+              role: 'assistant',
+              content: ChatsService.ASSISTANT_STOPPED_CONTENT,
+              evidenceJson: {},
+            },
+          });
+          await tx.chat.update({
+            where: { id: chatId },
+            data: { updatedAt: new Date() },
+          });
+          return created;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error: any) {
+      if (error && error.code === 'P2034') {
+        const last = await this.prisma.chatMessage.findFirst({
+          where: { chatId },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (last && last.role === 'assistant' && last.content === ChatsService.ASSISTANT_STOPPED_CONTENT) {
+          return last;
+        }
+      }
+      throw error;
+    }
+  }
+
+  async createMessage(chatId: string, content: string, abortSignal?: AbortSignal) {
     const aiCheck = await this.settingsService.validateAiConfiguration();
     if (!aiCheck.ok) {
       throw new BadRequestException(aiCheck.reason);
@@ -112,6 +236,32 @@ export class ChatsService {
     await this.prisma.chatMessage.create({
       data: { chatId, role: 'user', content },
     });
+
+    const internalAc = new AbortController();
+    this.activeGenerations.set(chatId, internalAc);
+
+    const onReqAbort = () => internalAc.abort();
+    if (abortSignal?.aborted) {
+      internalAc.abort();
+    } else if (abortSignal) {
+      abortSignal.addEventListener('abort', onReqAbort);
+    }
+
+    try {
+      if (internalAc.signal.aborted) {
+      const row = await this.ensureStoppedAssistantIfPendingUser(chatId);
+      if (row) {
+        return row;
+      }
+      const latest = await this.prisma.chatMessage.findFirst({
+        where: { chatId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (latest?.role === 'assistant') {
+        return latest;
+      }
+      throw new BadGatewayException('Could not record stopped message.');
+    }
 
     const chatHistory = await this.prisma.chatMessage.findMany({
       where: { chatId },
@@ -133,12 +283,52 @@ export class ChatsService {
       return { role: m.role, content: text };
     });
 
-    const response = await this.orchestrator.answerQuestion(
-      chat.projectId,
-      content,
-      compressedHistory,
-      (text: string) => this.emitThought(chatId, text)
-    );
+    let response: Awaited<ReturnType<AgentOrchestratorService['answerQuestion']>>;
+    try {
+      response = await this.orchestrator.answerQuestion(
+        chat.projectId,
+        content,
+        compressedHistory,
+        (text: string) => this.emitThought(chatId, text),
+        internalAc.signal,
+      );
+    } catch (err) {
+      if (ChatsService.isAbortError(err, internalAc.signal)) {
+        const row = await this.ensureStoppedAssistantIfPendingUser(chatId);
+        if (row) {
+          return row;
+        }
+        const latest = await this.prisma.chatMessage.findFirst({
+          where: { chatId },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (latest?.role === 'assistant') {
+          return latest;
+        }
+        throw new BadGatewayException('Could not record stopped message.');
+      }
+      const detail = ChatsService.formatProviderFailure(err);
+      throw new BadGatewayException(
+        `AI provider error: ${detail}`,
+      );
+    }
+
+    // Double check abort signal before saving the final message.
+    if (internalAc.signal.aborted) {
+      const row = await this.ensureStoppedAssistantIfPendingUser(chatId);
+      if (row) {
+        return row;
+      }
+      const latest = await this.prisma.chatMessage.findFirst({
+        where: { chatId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (latest?.role === 'assistant') {
+        return latest;
+      }
+      throw new BadGatewayException('Could not record stopped message.');
+    }
+
     const evidenceList = Array.isArray((response as { evidenceList?: unknown }).evidenceList)
       ? ((response as { evidenceList: string[] }).evidenceList ?? []).filter((s) => typeof s === 'string')
       : [];
@@ -163,5 +353,13 @@ export class ChatsService {
     });
 
     return assistantMessage;
+    } finally {
+      if (abortSignal) {
+        abortSignal.removeEventListener('abort', onReqAbort);
+      }
+      if (this.activeGenerations.get(chatId) === internalAc) {
+        this.activeGenerations.delete(chatId);
+      }
+    }
   }
 }
