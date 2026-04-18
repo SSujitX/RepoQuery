@@ -282,3 +282,9 @@ RepoQuery/
 ## Contributing
 
 Use the GitHub issue tracker for bug reports and feature discussions; pull requests are welcome when they match project scope.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/chart?repos=SSujitX/RepoQuery&type=date&legend=top-left)](https://www.star-history.com/?repos=SSujitX%2FRepoQuery&type=date&legend=top-left)
+
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=github.com%2FSSujitX%2FRepoQuery&countColor=%23263759)](https://visitorbadge.io/status?path=github.com%2FSSujitX%2FRepoQuery)
