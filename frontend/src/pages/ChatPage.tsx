@@ -113,6 +113,16 @@ export function ChatPage() {
       void queryClient.invalidateQueries({ queryKey: ["messages", chatId] });
     },
     onError: (error: Error) => {
+      const data = queryClient.getQueryData<MessageModel[]>(["messages", chatId]) ?? [];
+      const currentAssistantCount = data.filter((m) => m.role === "assistant").length;
+      if (
+        sendBaselineAssistantCountRef.current !== null &&
+        currentAssistantCount > sendBaselineAssistantCountRef.current
+      ) {
+        // Chat successfully finished via DB polling, so we safely ignore this dangling socket error
+        return;
+      }
+
       const isAbortLike =
         error.name === "AbortError" ||
         (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
@@ -190,6 +200,20 @@ export function ChatPage() {
     });
   }, [chatId, initialMsg, location.pathname, navigate, messageMutation]);
 
+  const messages = messagesQuery.data ?? [];
+  const assistantCount = messages.filter((m) => m.role === "assistant").length;
+  const baselineAssistants = sendBaselineAssistantCountRef.current;
+  const newAssistantAlreadyFetched =
+    messageMutation.isPending &&
+    baselineAssistants !== null &&
+    assistantCount > baselineAssistants;
+
+  useEffect(() => {
+    if (newAssistantAlreadyFetched) {
+      sendAbortRef.current?.abort();
+    }
+  }, [newAssistantAlreadyFetched]);
+
   /* No hooks below: conditional returns only from here down. */
   if (!projectId || !chatId) {
     return <p className="muted">Invalid chat link.</p>;
@@ -224,7 +248,6 @@ export function ChatPage() {
         ? "Could not load messages for this chat."
         : null;
 
-  const messages = messagesQuery.data ?? [];
   const pendingVars = messageMutation.isPending ? messageMutation.variables : undefined;
   /*
    * Avoid duplicate user bubble: `refetchInterval` can load user+assistant from the DB while the
@@ -242,13 +265,12 @@ export function ChatPage() {
   const pendingUserContent =
     pendingVars && !pendingAlreadyInThread ? pendingVars : null;
 
-  const assistantCount = messages.filter((m) => m.role === "assistant").length;
-  const baselineAssistants = sendBaselineAssistantCountRef.current;
-  const newAssistantAlreadyFetched =
+  const newAssistantAlreadyFetchedComputed =
     messageMutation.isPending &&
     baselineAssistants !== null &&
     assistantCount > baselineAssistants;
-  const awaitingAssistant = messageMutation.isPending && !newAssistantAlreadyFetched;
+  const awaitingAssistant = messageMutation.isPending && !newAssistantAlreadyFetchedComputed;
+  const isEffectivelyPending = messageMutation.isPending && !newAssistantAlreadyFetchedComputed;
 
   const effectiveStatus = projectStatusQuery.data?.status ?? projectQuery.data.status;
   const projectForHeader = { ...projectQuery.data, status: effectiveStatus };
@@ -304,10 +326,10 @@ export function ChatPage() {
         errorText={sendError}
         onSend={sendMessage}
         onStopGeneration={stopGeneration}
-        stopWhileSending={messageMutation.isPending}
+        stopWhileSending={isEffectivelyPending}
         pendingUserContent={pendingUserContent}
         awaitingAssistant={awaitingAssistant}
-        sendBlocked={messageMutation.isPending}
+        sendBlocked={isEffectivelyPending}
         messagesInitialLoading={messagesQuery.isLoading}
         messagesError={messagesError}
       />
