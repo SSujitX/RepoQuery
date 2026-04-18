@@ -1141,6 +1141,47 @@ button:hover {
   line-height: 1.45;
 }
 
+.cgpt-thread-request-error {
+  max-width: 48rem;
+  margin: 0 auto;
+  width: 100%;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(69, 10, 10, 0.35);
+  padding: 0.65rem 0.85rem 0.75rem;
+}
+
+.cgpt-thread-request-error-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #fecaca;
+}
+
+.cgpt-thread-request-error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  background: rgba(248, 113, 113, 0.25);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fecaca;
+}
+
+.cgpt-thread-request-error-body {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .cgpt-composer-wrap {
   position: sticky;
   bottom: 0;
@@ -1209,6 +1250,20 @@ button:hover {
 
 .cgpt-composer-send {
   margin-bottom: 2px;
+}
+
+.cgpt-composer-stop {
+  margin-bottom: 2px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+}
+
+.cgpt-composer-stop:hover {
+  background: rgba(185, 28, 28, 0.45);
+  color: #fff;
 }
 
 .cgpt-composer-disclaimer {
