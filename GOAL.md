@@ -1127,8 +1127,7 @@ LLM_BASE_URL=
 LLM_MODEL=
 EMBEDDING_MODEL=
 
-# github
-GITHUB_TOKEN=
+# AI and GitHub: configure in Settings UI (stored in DB), not in .env
 
 # frontend
 VITE_API_BASE_URL=http://localhost:4000
