@@ -13,6 +13,15 @@ interface RoutingDecision {
 
 import OpenAI from 'openai';
 
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  const err = new Error('The user aborted a request.');
+  err.name = 'AbortError';
+  throw err;
+}
+
 @Injectable()
 export class AgentOrchestratorService {
   constructor(
@@ -25,6 +34,7 @@ export class AgentOrchestratorService {
     question: string,
     history: { role: string; content: string }[] = [],
     onProgress?: (text: string) => void,
+    signal?: AbortSignal,
   ) {
     const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
@@ -97,16 +107,21 @@ export class AgentOrchestratorService {
     ];
 
     let loopCount = 0;
+    /* Between LLM/tool rounds we honor `signal`. A single long retrieval call is not pre-empted mid-flight. */
     while (loopCount < 10) {
+      throwIfAborted(signal);
       if (onProgress) onProgress("Synthesizing next steps...");
       loopCount++;
-      const message = await this.providersService.completeWithTools(messages, tools);
+      const message = await this.providersService.completeWithTools(messages, tools, {
+        signal,
+      });
       if (!message) throw new Error('Provider returned null');
 
       messages.push(message);
 
       if (message.tool_calls && message.tool_calls.length > 0) {
         for (const toolCall of message.tool_calls) {
+          throwIfAborted(signal);
           const fn = (toolCall as any).function;
           let toolResult = '';
 
@@ -117,7 +132,10 @@ export class AgentOrchestratorService {
 
               const checkPrompt = getVerifyAgentPrompt(question, args.answer);
 
-              const verifyResult = await this.providersService.complete([{ role: 'user', content: checkPrompt }]);
+              const verifyResult = await this.providersService.complete(
+                [{ role: 'user', content: checkPrompt }],
+                { signal },
+              );
               const cleanResult = verifyResult.trim();
 
               if (cleanResult.toUpperCase().startsWith('VALID')) {
@@ -130,7 +148,10 @@ export class AgentOrchestratorService {
               } else {
                 toolResult = `Verification failed. Reason: ${cleanResult.slice(0, 500)}\nPlease correct the issue, find more code if needed, and try finishAnswer again.`;
               }
-            } catch (e) {
+            } catch (e: any) {
+              if (signal?.aborted || e?.name === 'AbortError') {
+                throw e;
+              }
               toolResult = 'Error parsing finishAnswer arguments. Provide valid JSON.';
             }
           } else {
@@ -154,7 +175,10 @@ export class AgentOrchestratorService {
                 toolResult = 'Unknown tool.';
               }
             } catch (err: any) {
-            toolResult = `Error executing tool: ${err.message}`;
+              if (signal?.aborted || err?.name === 'AbortError') {
+                throw err;
+              }
+              toolResult = `Error executing tool: ${err.message}`;
             }
           }
 
