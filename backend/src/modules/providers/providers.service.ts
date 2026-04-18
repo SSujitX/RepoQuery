@@ -22,6 +22,7 @@ export class ProvidersService {
 
   async complete(
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    options?: { signal?: AbortSignal },
   ) {
     const runtime = await this.getRuntimeSettings();
     if (!runtime) {
@@ -34,12 +35,17 @@ export class ProvidersService {
     });
     const model = runtime.modelName || 'gpt-4o-mini';
 
-    const response = await client.chat.completions.create({
-      model,
-      messages,
-      temperature: 0,
-      max_tokens: 3000,
-    });
+    // `signal` aborts the HTTP request to the provider (OpenAI, OpenAI-compatible, Ollama /v1, etc.).
+    // It does not interrupt work that is already running purely inside this process without await.
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages,
+        temperature: 0,
+        max_tokens: 3000,
+      },
+      { signal: options?.signal },
+    );
 
     return response.choices[0]?.message?.content ?? '';
   }
@@ -47,6 +53,7 @@ export class ProvidersService {
   async completeWithTools(
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
     tools?: OpenAI.Chat.Completions.ChatCompletionTool[],
+    options?: { signal?: AbortSignal },
   ) {
     const runtime = await this.getRuntimeSettings();
     if (!runtime) {
@@ -59,14 +66,17 @@ export class ProvidersService {
     });
     const model = runtime.modelName || 'gpt-4o-mini';
 
-    const response = await client.chat.completions.create({
-      model,
-      messages,
-      temperature: 0,
-      max_tokens: 3000,
-      tools: tools?.length ? tools : undefined,
-      tool_choice: tools?.length ? 'auto' : undefined,
-    });
+    const response = await client.chat.completions.create(
+      {
+        model,
+        messages,
+        temperature: 0,
+        max_tokens: 3000,
+        tools: tools?.length ? tools : undefined,
+        tool_choice: tools?.length ? 'auto' : undefined,
+      },
+      { signal: options?.signal },
+    );
 
     return response.choices[0]?.message ?? null;
   }
