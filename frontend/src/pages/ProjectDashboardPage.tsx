@@ -166,13 +166,28 @@ export function ProjectDashboardPage() {
 
   const syncMutation = useMutation({
     mutationFn: () => apiClient.syncProject(selectedProjectId),
+    onMutate: () => {
+      void queryClient.invalidateQueries({ queryKey: ["project-status", selectedProjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["project", selectedProjectId] });
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["project", selectedProjectId] });
       void queryClient.invalidateQueries({ queryKey: ["project-status", selectedProjectId] });
       void queryClient.invalidateQueries({ queryKey: ["project-sync-runs", selectedProjectId] });
+      void queryClient.invalidateQueries({ queryKey: ["project-sources", selectedProjectId] });
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
+
+  useEffect(() => {
+    if (!selectedProjectId || !syncMutation.isPending) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ["project-status", selectedProjectId] });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [syncMutation.isPending, selectedProjectId, queryClient]);
 
   const createChatMutation = useMutation({
     mutationFn: (payload: { title: string }) => apiClient.createChat(selectedProjectId, payload.title),
@@ -290,8 +305,12 @@ export function ProjectDashboardPage() {
     );
   }
 
-  const projectStatus = projectQuery.data.status;
-  const liveSync = projectStatus === "syncing" || projectStatus === "refreshing";
+  const effectiveStatus = projectStatusQuery.data?.status ?? projectQuery.data.status;
+  const projectForHeader = { ...projectQuery.data, status: effectiveStatus };
+  const liveSync =
+    effectiveStatus === "syncing" ||
+    effectiveStatus === "refreshing" ||
+    syncMutation.isPending;
   const syncRun = projectStatusQuery.data?.syncRun;
   const syncPercent = typeof syncRun?.percent === "number" ? syncRun.percent : 0;
   const syncMessage =
@@ -302,7 +321,12 @@ export function ProjectDashboardPage() {
 
   return (
     <section className="workspace workspace-project-hub">
-      <ProjectHeader variant="hub" project={projectQuery.data} onRefresh={() => syncMutation.mutateAsync()} />
+      <ProjectHeader
+        variant="hub"
+        project={projectForHeader}
+        syncPending={syncMutation.isPending}
+        onRefresh={() => syncMutation.mutateAsync()}
+      />
 
       {liveSync ? (
         <section className="sync-progress-card proj-hub-sync-progress" aria-live="polite">
