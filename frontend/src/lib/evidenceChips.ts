@@ -10,6 +10,47 @@ function asObjectRecords(v: unknown): Record<string, unknown>[] {
   return v.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x));
 }
 
+function asStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) {
+    return [];
+  }
+  return v.filter((x): x is string => typeof x === "string");
+}
+
+/**
+ * Legacy / fallback: parse `Evidence:\n- item` bullets from assistant message body when JSON was empty.
+ */
+export function evidenceLinesFromAssistantContent(content: string): EvidenceChip[] {
+  const idx = content.search(/\n\s*Evidence\s*:?\s*\n/i);
+  if (idx === -1) {
+    return [];
+  }
+  const rest = content.slice(idx);
+  const lines = rest.split("\n").slice(1);
+  const out: EvidenceChip[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const m = line.match(/^\s*[-*]\s*(.+)$/);
+    if (!m) {
+      continue;
+    }
+    const text = m[1].trim();
+    if (!text) {
+      continue;
+    }
+    if (seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    const short = text.length > 42 ? `${text.slice(0, 39)}…` : text;
+    out.push({ label: short, title: text });
+    if (out.length >= 14) {
+      break;
+    }
+  }
+  return out;
+}
+
 function pushUnique(out: EvidenceChip[], seen: Set<string>, label: string, title?: string, max = 14) {
   if (out.length >= max) {
     return;
@@ -88,6 +129,17 @@ export function evidenceToChips(evidence: Record<string, unknown> | null | undef
     if (sha.length >= 7 && msg) {
       pushUnique(out, seen, sha.slice(0, 7), msg.split("\n")[0]);
     }
+  }
+
+  /* Agent `finishAnswer` persists string lines here (see chats.service). */
+  for (const line of asStringArray(evidence.evidenceList)) {
+    const t = line.trim();
+    if (!t) {
+      continue;
+    }
+    const short = t.includes("/") ? (t.split("/").pop() ?? t) : t;
+    const label = short.length > 44 ? `${short.slice(0, 41)}…` : short;
+    pushUnique(out, seen, label, t);
   }
 
   return out;
