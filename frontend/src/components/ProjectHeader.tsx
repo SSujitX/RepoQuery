@@ -7,6 +7,8 @@ type Props = {
   onRefresh: () => Promise<unknown>;
   /** Compact strip used on the full-page chat layout */
   variant?: "default" | "chat" | "hub";
+  /** True while a sync request is in flight (blocks double-clicks). */
+  syncPending?: boolean;
 };
 
 function FolderIcon({ size = 18 }: { size?: number }) {
@@ -20,7 +22,7 @@ function FolderIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function ProjectHeader({ project, onRefresh, variant = "default" }: Props) {
+export function ProjectHeader({ project, onRefresh, variant = "default", syncPending = false }: Props) {
   const chat = variant === "chat";
   const hub = variant === "hub";
 
@@ -44,8 +46,13 @@ export function ProjectHeader({ project, onRefresh, variant = "default" }: Props
         </div>
         <div className="hub-compact-actions">
           <SyncStatusBadge status={project.status} />
-          <button type="button" className="ghost-btn ghost-btn-sm" onClick={() => void onRefresh()}>
-            Sync
+          <button
+            type="button"
+            className="ghost-btn ghost-btn-sm"
+            disabled={syncPending}
+            onClick={() => void onRefresh()}
+          >
+            {syncPending ? "Syncing…" : "Sync"}
           </button>
         </div>
       </header>
@@ -74,8 +81,8 @@ export function ProjectHeader({ project, onRefresh, variant = "default" }: Props
       </div>
       <div className="stack-right">
         <SyncStatusBadge status={project.status} />
-        <button type="button" className="ghost-btn" onClick={() => void onRefresh()}>
-          {chat ? "Sync" : "Refresh Project"}
+        <button type="button" className="ghost-btn" disabled={syncPending} onClick={() => void onRefresh()}>
+          {syncPending ? "Syncing…" : chat ? "Sync" : "Refresh Project"}
         </button>
       </div>
     </header>
